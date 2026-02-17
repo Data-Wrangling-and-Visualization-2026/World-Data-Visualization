@@ -1,0 +1,114 @@
+# --------------------------
+# JUPYTER NOTEBOOK
+# --------------------------
+.ipynb_checkpoints
+
+# --------------------------
+# ENVIRONMENT & SECRETS
+# --------------------------
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+
+# --------------------------
+# DEPENDENCIES
+# --------------------------
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+requirements-freeze.txt
+venv/
+ENV/
+env/
+.venv/
+
+# --------------------------
+# IDE & EDITORS
+# --------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# --------------------------
+# OPERATING SYSTEM
+# --------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# --------------------------
+# DATA & ARTIFACTS
+# --------------------------
+# Ignore raw downloaded data (PDFs, CSVs) to keep repo light
+# Keep only processed data or samples in /data_pipeline/assets if needed
+data_pipeline/raw_data/
+data_pipeline/output/*.csv
+data_pipeline/output/*.json
+*.pdf
+*.xlsx
+
+# Database files (if using local SQLite or similar during dev)
+
+# --------------------------
+# BUILD & DEPLOY
+# --------------------------
+# React Build
+client/build/
+client/dist/
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+logs/
+*.log
+
+# --------------------------
+# TESTING
+# --------------------------
+coverage/
+.nyc_output/
+.pytest_cache/
+.tox/
