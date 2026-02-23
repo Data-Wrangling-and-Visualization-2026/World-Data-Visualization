@@ -19,24 +19,21 @@ We are constructing an interactive 3D chart of a world map with countries colore
 - **Unstructured Data**: Extracted from PDFs (Energy Inst, WorldBank, UN)
 - **Processing**: GenAI agents used for cleaning and microstate filtering.
 
-echo "✅ Populated README.md."
+## Data Extraction Pipeline
 
-# 7. Populate .env.example
-# cat > .env.example << 'EOF'
-# Database
-# DB_HOST=localhost
-# DB_PORT=5432
-# DB_USER=postgres
-# DB_PASSWORD=your_password_here
-# DB_NAME=world_map_db
+### Tools Used:
+1. **PyPDF** - Page pre-extraction from PDF reports
+2. **Docling** - PDF to Markdown conversion
+3. **Google Gemini-1.5-Flash** - Table extraction to CSV
 
-# API Keys (For GenAI Agents)
-# DEEPSEEK_API_KEY=your_key_here
-# CLAUDE_API_KEY=your_key_here
-# EOF
-# echo "✅ Populated .env.example."
+### Process:
+1. Identify table pages using PDF inspector
+2. Extract specific pages with PyPDF (reduces context by ~90%)
+3. Convert extracted pages to Markdown with Docling
+4. Send Markdown to Gemini for structured CSV extraction
+5. Validate output with pandas
 
-# echo ""
-# echo "🎉 Project setup complete!"
-# echo "📂 Navigate to the project folder: cd $PROJECT_NAME"
-# echo "🔍 Next steps: Initialize git, install dep
+### Justification:
+- Page pre-extraction reduces API costs and processing time
+- Gemini-1.5-Flash chosen for large context window and speed
+- Multiple LLMs available as fallback (Claude, DeepSeek) per project proposal
