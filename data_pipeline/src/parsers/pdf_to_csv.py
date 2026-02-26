@@ -5,13 +5,10 @@ Uses Docling for PDF -> Markdown conversion and Google Gemini-1.5-Flash for tabl
 
 import os
 import time
+import requests
 import pandas as pd
 from pathlib import Path
 from typing import List, Optional
-
-
-from google import genai
-from google.genai import types
 
 from dotenv import load_dotenv
 
@@ -25,8 +22,8 @@ from pdf_page_extractor import PDFPageExtractor
 class PDFToCSVExtractor:
     def __init__(
             self,
-            api_key: Optional[str] = os.getenv("GOOGLE_API_KEY"),
-            model_name: str = "gemini-2.0-flash",
+            llm_base_url: str = "http://localhost:11434",
+            llm_model: str = "qwen2.5vl:3b",
             output_dir: str = os.getenv("OUTPUT_PATH"),
             temp_dir: str = os.getenv("TEMP_PATH"),
             cleanup_temp: bool = True
@@ -41,8 +38,8 @@ class PDFToCSVExtractor:
             temp_dir: Directory for temporary extracted PDFs
             cleanup_temp: Whether to clean up temp files after processing
         """
-        print(output_dir)
-        self.model_name = model_name
+
+        self.llm_model = llm_model
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.cleanup_temp_flag = cleanup_temp
@@ -50,19 +47,7 @@ class PDFToCSVExtractor:
         self.page_extractor = PDFPageExtractor(temp_dir=temp_dir)  # Initialize PyPDF extractor
 
         # Configure Gemini
-        self.api_key = api_key
-
-        if not self.api_key:
-            raise ValueError("Google API Key not found. Set GOOGLE_API_KEY in .env")
-
-        self.model = genai.Client(api_key=self.api_key)
-        self.config = types.GenerateContentConfig(
-            temperature=os.getenv("MODEL_TEMPERATURE"),
-            max_output_tokens=os.getenv("MODEL_MAX_OUTPUT_TOKENS")
-        )
-
-        print(f"✅ Gemini configured with TEMPERATURE={os.getenv('MODEL_TEMPERATURE')} "
-              f"and MAX_OUTPUT_TOKENS={os.getenv('MODEL_MAX_OUTPUT_TOKENS')}")
+        self.llm_base_url = llm_base_url
 
         # Configure Docling converter
         self.converter = DocumentConverter()
@@ -150,8 +135,6 @@ class PDFToCSVExtractor:
         Returns:
             CSV formatted string
         """
-        if self.model is None:
-            raise ImportError("Gemini model not initialized. Check API Key.")
 
         # Construct the prompt for table extraction
         prompt = f"""You are a data extraction assistant.
@@ -171,19 +154,28 @@ Instructions:
 
 The Markdown content: {markdown_content}"""
 
-        print(f"🤖 Sending request to Gemini-1.5-Flash...")
+        url = f"{self.llm_base_url}/api/generate"
+        payload = {
+            "model": self.llm_model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": os.getenv("MODEL_TEMPERATURE"),  # Low temperature for accurate extraction
+                "num_predict": os.getenv("MODEL_MAX_OUTPUT_TOKENS")  # Max tokens for response
+            }
+        }
+
+        print(f"🤖 Sending request to Qwen2.5-VL:3b...")
 
         try:
-            # Generate content using Gemini
-            response = self.model.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=self.config
-            )
+            # Generate content using Qwen
+            response = requests.post(url, json=payload, timeout=300)
+            response.raise_for_status()
 
-            csv_content = response.text.strip()
+            result = response.json()
+            csv_content = result.get("response", "").strip()
 
-            # Clean up response (remove markdown code blocks if present)
+            # Clean up response (remove Markdown code blocks if present)
             csv_content = self._clean_csv_response(csv_content)
 
             print(f"✅ Table extracted ({len(csv_content.split(chr(10)))} rows)")
@@ -194,8 +186,8 @@ The Markdown content: {markdown_content}"""
             raise
 
     def _clean_csv_response(self, csv_content: str) -> str:
-        """Remove markdown code blocks and clean CSV output."""
-        # Remove markdown code blocks
+        """Remove Markdown code blocks and clean CSV output."""
+        # Remove Markdown code blocks
         if csv_content.startswith("```csv"):
             csv_content = csv_content[6:]
         elif csv_content.startswith("```"):
@@ -280,8 +272,13 @@ The Markdown content: {markdown_content}"""
             # Step 1: Extract specific pages (if specified)
             extracted_pdf_path = self.extract_pages_from_pdf(pdf_path, pages)
 
-            # Step 2: Convert PDF to Markdown
+            # Step 2: Convert PDF to Markdown and save in case of fatal error
             markdown_content = self.convert_pdf_to_markdown(extracted_pdf_path)
+
+            with open(rf"{os.getenv('PROJECT_PATH')}/data_pipeline/markdown/{output_filename}.md", "w") as mdfile:
+                mdfile.write(markdown_content)
+
+            quit()
 
             # Step 3: Extract table with LLM
             csv_content = self.extract_table_with_llm(markdown_content, table_description)
