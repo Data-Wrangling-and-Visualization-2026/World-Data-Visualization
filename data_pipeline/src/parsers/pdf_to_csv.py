@@ -278,8 +278,6 @@ The Markdown content: {markdown_content}"""
             with open(rf"{os.getenv('PROJECT_PATH')}/data_pipeline/markdown/{output_filename}.md", "w") as mdfile:
                 mdfile.write(markdown_content)
 
-            quit()
-
             # Step 3: Extract table with LLM
             csv_content = self.extract_table_with_llm(markdown_content, table_description)
 
