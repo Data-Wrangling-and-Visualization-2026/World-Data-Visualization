@@ -78,16 +78,6 @@ ehthumbs.db
 Thumbs.db
 desktop.ini
 
-# --------------------------
-# DATA & ARTIFACTS
-# --------------------------
-# Ignore raw downloaded data (PDFs, CSVs) to keep repo light
-# Keep only processed data or samples in /data_pipeline/assets if needed
-data_pipeline/raw_data/
-data_pipeline/output/*.csv
-data_pipeline/output/*.json
-*.pdf
-*.xlsx
 
 # Database files (if using local SQLite or similar during dev)
 
