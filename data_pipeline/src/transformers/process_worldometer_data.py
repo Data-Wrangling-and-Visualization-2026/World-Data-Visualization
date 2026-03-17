@@ -39,7 +39,7 @@ def _clean_text_columns(df: pd.DataFrame) -> pd.DataFrame:
     for col in text_cols:
         if col == "Country":
             continue
-            
+
         df[col] = df[col].map(_extract_numeric_token)
 
     return df
