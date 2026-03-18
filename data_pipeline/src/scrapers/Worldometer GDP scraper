@@ -1,0 +1,216 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import time
+import re
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+from typing import List, Dict, Any
+
+# ---------------------------------------------------------------------- 
+# Константы
+# ---------------------------------------------------------------------- 
+BASE_URL = "https://www.worldometers.info"
+GDP_PAGE = urljoin(BASE_URL, "/gdp/gdp-by-country/")
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; WorldometerGDPScraper/1.0; +https://example.com/bot)"
+}
+DELAY_BETWEEN_REQUESTS = 0.5  # seconds
+
+# ---------------------------------------------------------------------- 
+# Утилиты
+# ---------------------------------------------------------------------- 
+def fetch_page(url: str) -> str:
+    """Вернуть «сырой» HTML‑текст страницы."""
+    resp = requests.get(url, headers=HEADERS, timeout=15)
+    resp.raise_for_status()
+    return resp.text
+
+def clean_num(text: Any) -> Any:
+    """Удалить «мусор» и вернуть число (int/float) или None."""
+    if pd.isna(text):
+        return None
+    s = str(text).strip()
+    s = s.replace("\xa0", " ")  # неразрывный пробел
+    s = re.sub(r"\[.*?\]", "", s)  # ссылки‑сноски [1] …
+    s = re.sub(r"\(.*?\)", "", s)  # скобки с годами и т.п.
+    s = s.replace(",", "")  # разделители тысяч
+    s = s.replace("%", "")  # процентный знак
+    s = s.replace("+", "")  # плюс
+    s = s.replace(" ", "")  # обычные пробелы
+    if not s:
+        return None
+    try:
+        return float(s) if "." in s else int(s)
+    except ValueError:
+        return None
+
+def to_int(val: Any) -> Any:
+    """Преобразовать float без дробной части в int, иначе оставить как есть."""
+    if isinstance(val, float) and val.is_integer():
+        return int(val)
+    return val
+
+def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Общая очистка DataFrame (строковые пробелы + попытка числовой конвертации)."""
+    # 1️⃣ Строковые столбцы → чистый текст
+    for col in df.select_dtypes(include=["object"]).columns:
+        df[col] = df[col].astype(str).str.strip().replace(r"\s+", " ", regex=True)
+    
+    # 2️⃣ Пробуем превратить каждый столбец в числа
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        cleaned = df[col].apply(clean_num)
+        if cleaned.notna().mean() > 0.5:  # >50% → считаем числовым
+            df[col] = cleaned
+    return df
+
+# ---------------------------------------------------------------------- 
+# Парсинг списка стран с GDP (с правильным извлечением названия страны и ссылки)
+# ---------------------------------------------------------------------- 
+def parse_gdp_country_list(html: str) -> List[Dict[str, Any]]:
+    """
+    Извлечь список стран, их URL (из ссылки на ВВП) и рейтинг (столбец слева).
+    На сайте ссылка находится на значении ВВП (3-й столбец), а название страны - во 2-м столбце.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.select_one("table")  # Стандартная таблица на странице GDP by Country
+    if not table:
+        raise RuntimeError("Не удалось найти таблицу с GDP by Country.")
+    
+    countries = []
+    for row in table.select("tbody tr"):
+        cells = row.select("td")
+        if len(cells) >= 3:  # Нужно минимум 3 ячейки (рейтинг, страна, ВВП со ссылкой)
+            # Первый столбец - рейтинг
+            rank_cell = cells[0]
+            rank_text = rank_cell.get_text(strip=True)
+            
+            # Очищаем рейтинг от лишних символов и преобразуем в число
+            try:
+                rank = int(re.sub(r'[^\d]', '', rank_text)) if rank_text else None
+            except ValueError:
+                rank = None
+            
+            # Второй столбец - название страны (без ссылки)
+            country_cell = cells[1]
+            country_name = country_cell.get_text(strip=True)
+            
+            # Третий столбец - ВВП со ссылкой на страницу страны
+            gdp_cell = cells[2]
+            a_tag = gdp_cell.select_one("a")
+            
+            if a_tag and a_tag.get("href"):
+                href = a_tag["href"]
+                full_url = urljoin(BASE_URL, href)
+                
+                countries.append({
+                    "rank": rank,
+                    "country": country_name,
+                    "url": full_url
+                })
+                print(f"  Найдена страна: {country_name} (рейтинг: {rank}, URL: {full_url})")
+    
+    print(f"✅ Найдено {len(countries)} стран с данными о GDP.")
+    return countries
+
+# ---------------------------------------------------------------------- 
+# Парсинг таблицы GDP конкретной страны
+# ---------------------------------------------------------------------- 
+def parse_country_gdp_table(html: str, country: str, rank: int = None) -> pd.DataFrame:
+    """Извлечь таблицу GDP для конкретной страны и добавить рейтинг."""
+    soup = BeautifulSoup(html, "html.parser")
+    
+    # Ищем таблицу с GDP
+    tables_html = soup.select("table")
+    if not tables_html:
+        raise RuntimeError(f"Не найдена таблица GDP для страны: {country}")
+    
+    # Читаем таблицу с помощью pandas
+    # Пробуем найти таблицу с историческими данными
+    all_tables = pd.read_html(str(soup), header=0)
+    
+    # Ищем таблицу, которая содержит столбец "Year" или "GDP"
+    target_table = None
+    for table in all_tables:
+        if "Year" in table.columns and "GDP Nominal (Current USD)" in str(table.columns) and "GDP Real (Constant, Inflation Adjusted)" in str(table.columns):
+            target_table = table
+            break
+    
+    if target_table is None:
+        raise RuntimeError(f"Не удалось найти подходящую таблицу GDP для {country}")
+    
+    df = target_table
+
+    # Добавляем страну и рейтинг как первые столбцы
+    df.insert(0, "Country", country)
+    if rank is not None:
+        df.insert(1, "Global_Rank", rank)
+    else:
+        df.insert(1, "Global_Rank", None)
+
+    # Сортируем по Year (если есть)
+    if "Year" in df.columns:
+        df = df.sort_values(by=["Country", "Year"], ascending=[True, False])
+
+    # Очистка данных
+    df = clean_dataframe(df)
+
+    # Приведение к int, если возможно
+    for col in ["GDP (nominal)", "GDP per capita", "Global Rank"]:
+        if col in df.columns:
+            df[col] = df[col].apply(clean_num).apply(to_int)
+    
+    # Убедимся, что Global_Rank - целое число
+    if "Global_Rank" in df.columns:
+        df["Global_Rank"] = pd.to_numeric(df["Global_Rank"], errors='coerce').apply(to_int)
+
+    print(f"✅ Таблица GDP для {country} обработана (рейтинг: {rank}).")
+    return df
+
+# ---------------------------------------------------------------------- 
+# Основная функция
+# ---------------------------------------------------------------------- 
+def main():
+    print("📥 Скачиваем страницу GDP by Country…")
+    html = fetch_page(GDP_PAGE)
+
+    print("🔎 Парсим список стран (название из 2-го столбца, ссылка из 3-го столбца)…")
+    countries = parse_gdp_country_list(html)
+
+    gdp_data: List[pd.DataFrame] = []
+    for idx, entry in enumerate(countries, start=1):
+        rank, name, url = entry["rank"], entry["country"], entry["url"]
+        print(f"[{idx}/{len(countries)}] Обрабатываем {name} (рейтинг: {rank})…")
+
+        try:
+            country_html = fetch_page(url)
+            df = parse_country_gdp_table(country_html, name, rank)
+            df["GDP URL"] = url
+            gdp_data.append(df)
+        except Exception as exc:
+            print(f"⚠️ Ошибка при обработке {name}: {exc}")
+
+        time.sleep(DELAY_BETWEEN_REQUESTS)
+
+    # Сохранение
+    if gdp_data:
+        final_df = pd.concat(gdp_data, ignore_index=True)
+        final_df = final_df.drop('Global_Rank', axis=1)
+        final_df = final_df.drop('Pop. Change', axis=1)
+        output_file = "worldometer_gdp_data.csv"
+        final_df.to_csv(output_file, index=False, encoding="utf-8-sig")
+        print(f"\n✅ Данные GDP сохранены в «{output_file}»")
+        
+        # Вывод первых строк и информации
+        print("\n🔎 Первые 5 строк:")
+        print(final_df.head())
+        print("\n🔎 Информация о данных:")
+        print(final_df.info())
+    else:
+        print("\n❌ Не удалось собрать ни одной строки данных о GDP.")
+
+if __name__ == "__main__":
+    main()
