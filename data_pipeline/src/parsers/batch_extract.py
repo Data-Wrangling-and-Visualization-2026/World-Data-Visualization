@@ -997,12 +997,6 @@ Georgia,Total,50537,59906,49118,42756,43971
 
 def batch_process_pdfs():
     """Process all PDFs from different sources with page pre-extraction."""
-    # Check API Key
-    if not os.getenv("GOOGLE_API_KEY"):
-        print("❌ GOOGLE_API_KEY not set in environment.")
-        print("💡 Please set GOOGLE_API_KEY in data_pipeline/.env")
-        return
-
     extractor = PDFToCSVExtractor(cleanup_temp=True)
 
     # Define PDF sources from project proposal

@@ -1,3 +1,4 @@
+import os
 import csv
 from pathlib import Path
 
@@ -141,12 +142,20 @@ def process_file(path: Path) -> None:
 
 def main() -> None:
     # Process all birth*.csv and death*.csv that are original files
-    for pattern in ("birth*.csv", "death*.csv"):
-        for csv_path in sorted(STRUCTURED_DIR.glob(pattern)):
-            # Skip already-updated outputs if they exist
-            if csv_path.name.endswith("UPD.csv"):
-                continue
-            process_file(csv_path)
+    try:
+        for pattern in ("birth*.csv", "death*.csv"):
+            for csv_path in sorted(STRUCTURED_DIR.glob(pattern)):
+                # Skip already-updated outputs if they exist
+                if csv_path.name.endswith("UPD.csv"):
+                    continue
+                process_file(csv_path)
+
+    except Exception as e:
+        print(f"❌ The standardization of countries names went wrong: {e}")
+
+    else:
+        print(f"✅ The countries names were standardized to suit each other")
+
 
 
 if __name__ == "__main__":

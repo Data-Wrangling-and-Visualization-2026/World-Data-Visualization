@@ -234,36 +234,41 @@ def copy_files(*filenames: str):
 
 
 def main() -> None:
-    TRANSFORMED_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        TRANSFORMED_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Collect and clean all birth-related CSVs
-    birth_dfs: list[pd.DataFrame] = []
-    for csv_path in sorted(STRUCTURED_DIR.glob("birth*.csv")):
-        birth_dfs.append(_load_clean_file(csv_path))
+        # Collect and clean all birth-related CSVs
+        birth_dfs: list[pd.DataFrame] = []
+        for csv_path in sorted(STRUCTURED_DIR.glob("birth*.csv")):
+            birth_dfs.append(_load_clean_file(csv_path))
 
-    # Collect and clean all death-related CSVs
-    death_dfs: list[pd.DataFrame] = []
-    for csv_path in sorted(STRUCTURED_DIR.glob("death*.csv")):
-        death_dfs.append(_load_clean_file(csv_path))
+        # Collect and clean all death-related CSVs
+        death_dfs: list[pd.DataFrame] = []
+        for csv_path in sorted(STRUCTURED_DIR.glob("death*.csv")):
+            death_dfs.append(_load_clean_file(csv_path))
 
-    # Combine by joining years horizontally
-    birth_combined = _combine_year_slices(birth_dfs)
-    death_combined = _combine_year_slices(death_dfs)
+        # Combine by joining years horizontally
+        birth_combined = _combine_year_slices(birth_dfs)
+        death_combined = _combine_year_slices(death_dfs)
 
-    # Post-process: outlier clipping and interpolation
-    birth_final = _postprocess_wide_dataset(birth_combined)
-    death_final = _postprocess_wide_dataset(death_combined)
+        # Post-process: outlier clipping and interpolation
+        birth_final = _postprocess_wide_dataset(birth_combined)
+        death_final = _postprocess_wide_dataset(death_combined)
 
-    # Save outputs
-    if not birth_final.empty:
-        birth_final.to_csv(TRANSFORMED_DIR / "birth_dataset.csv", index=False)
+        # Save outputs
+        if not birth_final.empty:
+            birth_final.to_csv(TRANSFORMED_DIR / "birth_dataset.csv", index=False)
 
-    if not death_final.empty:
-        death_final.to_csv(TRANSFORMED_DIR / "death_dataset.csv", index=False)
+        if not death_final.empty:
+            death_final.to_csv(TRANSFORMED_DIR / "death_dataset.csv", index=False)
 
-    # # Preserve some files without modifications
-    # copy_files(f"{STRUCTURED_DIR}/worldometer_population_data.csv",
-    #            f"{STRUCTURED_DIR}/worldometer_co2_data.csv")
+    except Exception as e:
+        print(f"❌ The wrangling of birth_dataset.csv and death_dataset.csv is failed: {e}")
+
+    else:
+        print(f"✅ The birth_dataset.csv and death_dataset.csv were cleansed and transformed successfully")
+
+
 
 
 if __name__ == "__main__":

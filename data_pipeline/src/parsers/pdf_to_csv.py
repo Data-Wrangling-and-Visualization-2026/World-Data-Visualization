@@ -1,12 +1,12 @@
 """
 PDF to CSV Extraction Pipeline
-Uses Docling for PDF -> Markdown conversion and Google Gemini-1.5-Flash for table extraction
+Uses Docling for PDF -> Markdown conversion and Local LLM for table extraction
 """
 
 import os
 import time
-import requests
 import pandas as pd
+
 from pathlib import Path
 from typing import List, Optional
 
@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+from ollama import Client
 
 from docling.document_converter import DocumentConverter
 from pdf_page_extractor import PDFPageExtractor
@@ -23,7 +25,7 @@ class PDFToCSVExtractor:
     def __init__(
             self,
             llm_base_url: str = "http://localhost:11434",
-            llm_model: str = "qwen2.5vl:3b",
+            llm_model: str = os.getenv("MODEL_NAME"),
             output_dir: str = os.getenv("OUTPUT_PATH"),
             temp_dir: str = os.getenv("TEMP_PATH"),
             cleanup_temp: bool = True
@@ -32,8 +34,8 @@ class PDFToCSVExtractor:
         Initialize the PDF to CSV extractor with Gemini API.
 
         Args:
-            api_key: Google API Key (defaults to env var)
-            model_name: Gemini model version
+            llm_base_url: Local requests to LLM location
+            llm_model: LLM model version
             output_dir: Directory to save CSV files
             temp_dir: Directory for temporary extracted PDFs
             cleanup_temp: Whether to clean up temp files after processing
@@ -46,7 +48,7 @@ class PDFToCSVExtractor:
 
         self.page_extractor = PDFPageExtractor(temp_dir=temp_dir)  # Initialize PyPDF extractor
 
-        # Configure Gemini
+        # Configure model
         self.llm_base_url = llm_base_url
 
         # Configure Docling converter
@@ -124,9 +126,9 @@ class PDFToCSVExtractor:
             self,
             markdown_content: str,
             table_description: str = ""
-    ) -> str:
+    ) -> pd.DataFrame:
         """
-        Send Markdown to Gemini-1.5-Flash and extract table as CSV.
+        Send Markdown to local LLM and extract table as CSV.
 
         Args:
             markdown_content: Markdown content from PDF
@@ -148,46 +150,49 @@ Instructions:
 5. Identify and include row indices as the first column
 6. Use comma as delimiter
 7. Fill missing values as 'nan'
-8. Output ONLY the CSV data, no markdown code blocks, no explanations
+
+WARNING: Output ONLY the CSV data, no markdown code blocks, no additional comments and explanations on the result
 
 {f"Additional context: {table_description}" if table_description else ""}
 
 The Markdown content: {markdown_content}"""
 
-        url = f"{self.llm_base_url}/api/generate"
-        payload = {
-            "model": self.llm_model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": os.getenv("MODEL_TEMPERATURE"),  # Low temperature for accurate extraction
-                "num_predict": os.getenv("MODEL_MAX_OUTPUT_TOKENS")  # Max tokens for response
-            }
-        }
+        client = Client(host=self.llm_base_url)  # Use your actual host if different
 
-        print(f"🤖 Sending request to Qwen2.5-VL:3b...")
+        # Generate CSV using Local LLM
+        response = client.generate(
+            model=self.llm_model,
+            prompt=prompt,
+            options={
+                "temperature": float(os.getenv("MODEL_TEMPERATURE")),  # Default is 0.1
+                "num_predict": int(os.getenv("MODEL_MAX_OUTPUT_TOKENS"))  # Max output tokens
+            },
+            stream=False  # Set to True to stream response chunks
+        )
+
+        print(f"🤖 Sending request to {self.llm_model}...")
 
         try:
-            # Generate content using Qwen
-            response = requests.post(url, json=payload, timeout=300)
-            response.raise_for_status()
+            csv_content = response['response'].strip()
 
-            result = response.json()
-            csv_content = result.get("response", "").strip()
-
-            # Clean up response (remove Markdown code blocks if present)
-            csv_content = self._clean_csv_response(csv_content)
+            # Clean up response
+            dataframe = self._read_and_basic_cleanup(csv_content)
 
             print(f"✅ Table extracted ({len(csv_content.split(chr(10)))} rows)")
-            return csv_content
+            return dataframe
 
         except Exception as e:
-            print(f"❌ Gemini extraction failed: {e}")
+            print(f"❌ {self.llm_model} extraction failed: {e}")
             raise
 
-    def _clean_csv_response(self, csv_content: str) -> str:
-        """Remove Markdown code blocks and clean CSV output."""
-        # Remove Markdown code blocks
+    def _read_and_basic_cleanup(self, csv_content: str) -> pd.DataFrame:
+        """
+        Read a CSV and perform initial structural cleanup:
+        - Allows variable-length rows, trimming any trailing values
+          beyond the header length.
+        - Drops 'Index' column if present.
+        """
+        # First, read via csv module so we can trim rows to header length
         if csv_content.startswith("```csv"):
             csv_content = csv_content[6:]
         elif csv_content.startswith("```"):
@@ -196,9 +201,40 @@ The Markdown content: {markdown_content}"""
         if csv_content.endswith("```"):
             csv_content = csv_content[:-3]
 
-        return csv_content.strip()
+        rows: list[list[str|None]] = []
 
-    def save_csv(self, csv_content: str, filename: str) -> Path:
+        with open(os.getenv("OUTPUT_PATH") + "temp_csv.csv", 'w', encoding='utf-8') as f:
+            f.write(csv_content.strip())
+
+        with Path(os.getenv("OUTPUT_PATH") + "temp_csv.csv").open(encoding="utf-8") as f:
+            header_line = f.readline()
+            header = [h.strip() for h in header_line.rstrip("\n\r").split(",")]
+            n_cols = len(header)
+            rows.append(header)
+
+            for line in f:
+                parts = [p for p in line.rstrip("\n\r").split(",")]
+                if not parts or all(p == "" for p in parts):
+                    continue
+                # Trim any trailing values beyond the header width
+                if len(parts) > n_cols:
+                    parts = parts[:n_cols]
+
+                elif len(parts) < n_cols:
+                    parts = parts.extend([None] * (n_cols - len(parts)))
+                rows.append(parts)
+
+        df = pd.DataFrame(rows[1:], columns=rows[0])
+
+        if "Index" in df.columns:
+            df = df.drop(columns=["Index"])
+
+        os.remove(os.getenv("OUTPUT_PATH") + "temp_csv.csv")
+
+        return df
+
+
+    def save_csv(self, dataframe: pd.DataFrame, filename: str) -> Path:
         """
         Save CSV content to file.
 
@@ -211,8 +247,7 @@ The Markdown content: {markdown_content}"""
         """
         output_path = self.output_dir / f"{filename}.csv"
 
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(csv_content)
+        dataframe.to_csv(path_or_buf=output_path, mode="w", encoding="utf-8", index=False)
 
         print(f"💾 CSV saved to: {output_path}")
         return output_path
@@ -256,7 +291,7 @@ The Markdown content: {markdown_content}"""
             Dictionary with processing results
         """
         print(f"\n{'=' * 60}")
-        print(f"🚀 Starting PDF to CSV Extraction Pipeline (Gemini)")
+        print(f"🚀 Starting PDF to CSV Extraction Pipeline ({self.llm_model})")
         print(f"{'=' * 60}\n")
 
         results = {
@@ -279,10 +314,10 @@ The Markdown content: {markdown_content}"""
                 mdfile.write(markdown_content)
 
             # Step 3: Extract table with LLM
-            csv_content = self.extract_table_with_llm(markdown_content, table_description)
+            dataframe = self.extract_table_with_llm(markdown_content, table_description)
 
             # Step 4: Save CSV
-            csv_path = self.save_csv(csv_content, output_filename)
+            csv_path = self.save_csv(dataframe, output_filename)
             results["output_csv"] = str(csv_path)
 
             # Step 5: Validate

@@ -158,9 +158,16 @@ def _write_sqlite(df: pd.DataFrame) -> None:
 
 
 def main() -> None:
-    tables = _load_transformed_tables()
-    merged = _merge_on_year_country(tables)
-    _write_sqlite(merged)
+    try:
+        tables = _load_transformed_tables()
+        merged = _merge_on_year_country(tables)
+        _write_sqlite(merged)
+
+    except Exception as e:
+        print(f"❌ The merge of datasets and upload into a database is failed: {e}")
+
+    else:
+        print(f"✅ The datasets were merged and uploaded into a database successfully")
 
 
 if __name__ == "__main__":

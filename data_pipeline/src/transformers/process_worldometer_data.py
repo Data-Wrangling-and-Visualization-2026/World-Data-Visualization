@@ -131,11 +131,18 @@ def main() -> None:
     Process all Worldometer-style CSVs in parsed_data.
     Functions are written generically and are not tied to specific filenames.
     """
-    if not PARSED_DIR.exists():
-        return
+    try:
+        if not PARSED_DIR.exists():
+            return
 
-    for csv_path in sorted(PARSED_DIR.glob("worldometer_*.csv")):
-        _process_worldometer_file(csv_path)
+        for csv_path in sorted(PARSED_DIR.glob("worldometer_*.csv")):
+            _process_worldometer_file(csv_path)
+
+    except Exception as e:
+        print(f"❌ The wrangling of Worldometer related datasets is failed: {e}")
+
+    else:
+        print(f"✅ The Worldometer related datasets were cleansed and transformed successfully")
 
 
 if __name__ == "__main__":
