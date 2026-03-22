@@ -20,6 +20,13 @@ DATABASE_PATH=${PROJECT_PATH}/database/
 MODEL_NAME=qwen2.5vl:7b
 MODEL_TEMPERATURE=0.1
 MODEL_MAX_OUTPUT_TOKENS=8092
+
+# PostgreSQL Database configuration
+DB_HOST=localhost
+DB_NAME=countries_stats
+DB_USER=postgres
+DB_PASSWORD=0
+DB_PORT=5432
 EOF
 
 echo ".env has been generated at: ${PROJECT_PATH}/.env"

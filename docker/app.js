@@ -22,7 +22,7 @@ const pool = new Pool({
 // Эндпоинт: GET /data — возвращает очищенные данные
 app.get('/data', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM countries_stats'); // ← ваша очищенная таблица
+    const result = await pool.query('SELECT * FROM country'); // ← ваша очищенная таблица
     const data = result.rows;
     
     res.json({

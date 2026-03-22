@@ -11,7 +11,7 @@ We are constructing an interactive 3D chart of a world map with countries colore
 ## Technical Stack
 - **Frontend**: React
 - **Backend**: Node.js
-- **Database**: SQLite
+- **Database**: PostgreSQL, SQLite
 - **DevOps**: Docker
 
 ## Data Strategy
@@ -72,6 +72,7 @@ We are constructing an interactive 3D chart of a world map with countries colore
    ```
 
 #### Windows
+
    ```bat
    REM Clone the repository
    git clone <REPOSITORY_URL>
@@ -90,3 +91,50 @@ We are constructing an interactive 3D chart of a world map with countries colore
    REM Launch the data pipeline:
    python data_pipeline/src/main.py
    ```
+
+>[!warn] Do not forget to edit `DB_USER` and `DB_PASSWORD` with your own values
+
+## Docker
+
+Below you can see the scripts for launching the application via Docker
+
+#### Linux/macOS
+```bash
+cd $PROJECT_PATH/docker
+docker build -t dwav-api .
+
+docker run --rm -p 8000:8000 --env-file .env dwav-api
+```
+
+If `host.docker.internal` does not resolve, use:
+
+```bash
+docker run --rm -p 8000:8000 --add-host=host.docker.internal:host-gateway --env-file .env dwav-api
+```
+
+#### Windows
+```bat
+@echo off
+setlocal EnableExtensions
+
+REM Build and run the Node API from this folder (same as: docker build / docker run).
+REM Requires Docker Desktop for Windows. Ensure docker\.env exists with DB_* and PORT.
+
+cd /d "%~dp0"
+
+if not exist ".env" (
+    echo ERROR: docker\.env not found in this folder. Create it with DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT, PORT.
+    exit /b 1
+)
+
+echo Building image dwav-api...
+docker build -t dwav-api .
+if errorlevel 1 exit /b 1
+
+echo.
+echo Starting container on http://localhost:8000  (Ctrl+C to stop)
+echo.
+
+docker run --rm -p 8000:8000 --env-file .env dwav-api
+exit /b %ERRORLEVEL%
+```

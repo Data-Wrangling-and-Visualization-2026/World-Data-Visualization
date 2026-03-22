@@ -21,6 +21,13 @@ echo # Local LLM Configuration
 echo MODEL_NAME=qwen2.5vl:7b
 echo MODEL_TEMPERATURE=0.1
 echo MODEL_MAX_OUTPUT_TOKENS=8092
+
+echo # PostgreSQL Database configuration
+echo DB_HOST=localhost
+echo DB_NAME=countries_stats
+echo DB_USER=postgres
+echo DB_PASSWORD=0
+echo DB_PORT=5432
 ) > .env
 
 echo .env has been generated at: %CD%\.env
