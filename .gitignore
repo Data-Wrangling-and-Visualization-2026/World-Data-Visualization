@@ -96,6 +96,10 @@ docker-compose.override.yml
 logs/
 *.log
 
+# Node modules
+client/node_modules
+server/node_modules
+
 # --------------------------
 # TESTING
 # --------------------------

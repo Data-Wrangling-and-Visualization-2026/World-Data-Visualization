@@ -66,15 +66,16 @@ app.get("/metrics", (req, res) => {
 });
 
 app.get("/country-series/:country", (req, res) => {
-  const country = req.params.country;
+  const country = req.params.country.trim();
 
+  console.log(`Ищем страну: "${country}"`);
   // Build a safe SELECT list for metrics with spaces/symbols.
   const metricSelect = METRICS.map((m) => `"${m}"`).join(", ");
   const sql = `
     SELECT Year, Country, ${metricSelect}
     FROM country
-    WHERE Country = ?
-      AND Year IS NOT NULL
+    WHERE LOWER(Country) = LOWER(?)
+    AND Year IS NOT NULL
     ORDER BY Year ASC
   `;
 
@@ -144,13 +145,13 @@ app.get("/choropleth/:metric/:year", (req, res) => {
 });
 
 app.get("/country-data/:country/:year", (req, res) => {
-  const country = req.params.country;
+  const country = req.params.country.trim();
   const year = req.params.year;
 
   const sql = `
     SELECT *
     FROM country
-    WHERE Country = ? AND Year = ?
+    WHERE LOWER(Country) = LOWER(?) AND Year = ?
     LIMIT 1
   `;
 

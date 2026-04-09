@@ -116,6 +116,17 @@ body {
   scrollbar-width: thin;
 }
 
+.panel-block--sticky-filters {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  /* Make it look continuous when stuck */
+  background: rgba(2, 6, 23, 0.92);
+  backdrop-filter: blur(10px);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+
 .right-panel::-webkit-scrollbar {
   width: 10px;
 }
@@ -207,6 +218,170 @@ body {
 .panel-metric-select option {
   background-color: #0f172a;
   color: #f1f5f9;
+}
+
+.panel-subscroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  padding-right: 6px; /* space for scrollbar */
+}
+
+.panel-subscroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.panel-subscroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+}
+
+/* Keep “Selected Country Data” compact so it doesn't push charts away */
+.panel-subscroll--metrics {
+  max-height: 260px;
+}
+
+/* Make the charts block self-scrollable */
+.panel-subscroll--charts {
+  max-height: 620px;
+}
+
+.charts-grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+/* Split mode: 6x1 (single column), scroll happens on the right-panel itself */
+.charts-grid.mode-split,
+.charts-grid.mode-globe {
+  grid-template-columns: 1fr;
+}
+
+/* Panel mode: 2x3 grid */
+.charts-grid.mode-panel {
+  grid-template-columns: 1fr 1fr;
+}
+
+.chart-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 12px;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Split mode: keep cards compact to fit narrow right panel */
+.charts-grid.mode-split .chart-card {
+  min-height: 220px;
+}
+
+.chart-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin-bottom: 10px;
+  letter-spacing: 0.01em;
+}
+
+.chart-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chart-host > svg.chart-svg {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.chart-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.chart-axis-label {
+  fill: #cbd5e1;
+  color: #cbd5e1;
+  font-size: 10px;
+}
+
+.chart-empty {
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 10px 2px;
+}
+
+.chart-number-legend-window {
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(2, 6, 23, 0.35);
+  border-radius: 12px;
+  padding: 10px;
+  max-height: 120px;
+  overflow-y: auto;
+  overflow-x: hidden; /* no horizontal slider */
+  scrollbar-width: thin;
+}
+
+.chart-number-legend-window::-webkit-scrollbar {
+  width: 10px;
+}
+
+.chart-number-legend-window::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+}
+
+.chart-number-legend-grid {
+  display: grid;
+  grid-template-columns: 1fr; /* vertical metrics */
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.chart-number-legend-cell {
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Split mode: slightly smaller legend window */
+.charts-grid.mode-split .chart-number-legend-window {
+  max-height: 96px;
+}
+
+.chart-legend-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 10px;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chart-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.chart-legend-text {
+  color: #cbd5e1;
+  font-size: 12px;
 }
 
 .legend-list {
