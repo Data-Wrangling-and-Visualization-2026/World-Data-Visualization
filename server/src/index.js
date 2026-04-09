@@ -20,18 +20,21 @@ const db = new sqlite3.Database(dbPath, (err) => {
 
 const METRICS = [
   "Population",
+  "Yearly Change",
+  "Yearly % Change",
   "Birth",
   "Death",
   "Fossil CO2 emissions (tons)",
+  "CO2 emissions change",
   "CO2 emissions per capita",
   "Median Age",
   "Fertility Rate",
   "Urban Pop %",
   "Urban Population",
-  "Density (P/Km²)",
+  "Density (P/KmÂ²)",
   "Migrants (net)",
   "Country's Share of World Pop",
-  "Share of World's CO2 emissions"
+  "Share of World's CO2 emissions",
 ];
 
 app.get("/", (req, res) => {
@@ -60,6 +63,31 @@ app.get("/years", (req, res) => {
 
 app.get("/metrics", (req, res) => {
   res.json(METRICS);
+});
+
+app.get("/country-series/:country", (req, res) => {
+  const country = req.params.country;
+
+  // Build a safe SELECT list for metrics with spaces/symbols.
+  const metricSelect = METRICS.map((m) => `"${m}"`).join(", ");
+  const sql = `
+    SELECT Year, Country, ${metricSelect}
+    FROM country
+    WHERE Country = ?
+      AND Year IS NOT NULL
+    ORDER BY Year ASC
+  `;
+
+  db.all(sql, [country], (err, rows) => {
+    if (err) {
+      console.error(err.message);
+      return res.status(500).json({ error: "Failed to load country series" });
+    }
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: "No data found" });
+    }
+    res.json(rows);
+  });
 });
 
 app.get("/choropleth/:metric/:year", (req, res) => {

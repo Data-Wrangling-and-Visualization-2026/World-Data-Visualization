@@ -11,8 +11,30 @@ const COLOR_SCALE = [
   "#d73027"
 ];
 
+const MIN_YEAR = 1977;
+const MAX_YEAR = 2022;
 const DEFAULT_YEAR = "2020";
 const DEFAULT_METRIC = "Population";
+
+/** Must match `METRICS` in `server/src/index.js` (choropleth whitelist). */
+const METRICS = [
+  "Population",
+  "Yearly Change",
+  "Yearly % Change",
+  "Birth",
+  "Death",
+  "Fossil CO2 emissions (tons)",
+  "CO2 emissions change",
+  "CO2 emissions per capita",
+  "Median Age",
+  "Fertility Rate",
+  "Urban Pop %",
+  "Urban Population",
+  "Density (P/KmÂ²)",
+  "Migrants (net)",
+  "Country's Share of World Pop",
+  "Share of World's CO2 emissions"
+];
 
 function getCountryName(feature) {
   return (
@@ -56,8 +78,8 @@ function normalizeCountryName(name) {
     "united states of america": "united states",
     "russian federation": "russia",
     "czechia": "czech republic",
-    "democratic republic of the congo": "democratic republic of congo",
-    "dem rep congo": "democratic republic of congo",
+    "democratic republic of the congo": "dr congo",
+    "dem rep congo": "dr congo",
     "republic of the congo": "congo",
     "united republic of tanzania": "tanzania",
     "viet nam": "vietnam",
@@ -113,8 +135,8 @@ export default function App() {
   const [apiItems, setApiItems] = useState([]);
   const [viewMode, setViewMode] = useState("split");
 
-  const selectedYear = DEFAULT_YEAR;
-  const selectedMetric = DEFAULT_METRIC;
+  const [selectedYear, setSelectedYear] = useState(DEFAULT_YEAR);
+  const [selectedMetric, setSelectedMetric] = useState(DEFAULT_METRIC);
 
   useEffect(() => {
     fetch("/countries.geojson")
@@ -185,7 +207,7 @@ export default function App() {
 
       return {
         color,
-        label: `${from.toFixed(0)} – ${to.toFixed(0)}`
+        label: `${from.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")} – ${to.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`
       };
     });
   }, [rangeInfo]);
@@ -296,7 +318,7 @@ export default function App() {
                   return `
                     <div style="padding:6px 8px;">
                       <strong>${rawName}</strong><br/>
-                      <strong>${selectedMetric}:</strong> ${Number.isFinite(value) ? value : "No data"}
+                      <strong>${selectedMetric}:</strong> ${Number.isFinite(value) ? value.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",") : "No data"}
                     </div>
                   `;
                 }}
@@ -313,8 +335,41 @@ export default function App() {
 
             <div className="panel-block">
               <h3>Default Filters</h3>
-              <p><strong>Year:</strong> {selectedYear}</p>
-              <p><strong>Metric:</strong> {selectedMetric}</p>
+              <p>
+                <strong>Year:</strong> {selectedYear}
+              </p>
+              <input
+                className="panel-year-range"
+                type="range"
+                min={MIN_YEAR}
+                max={MAX_YEAR}
+                step={1}
+                value={Number(selectedYear)}
+                onChange={(e) => setSelectedYear(String(e.target.value))}
+                aria-label="Year"
+              />
+              <div className="panel-year-ticks">
+                <span>{MIN_YEAR}</span>
+                <span>{MAX_YEAR}</span>
+              </div>
+
+              <div className="filter-field">
+                <label htmlFor="metric-select" className="panel-block-label">
+                  Metric
+                </label>
+                <select
+                  id="metric-select"
+                  className="panel-metric-select"
+                  value={selectedMetric}
+                  onChange={(e) => setSelectedMetric(e.target.value)}
+                >
+                  {METRICS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="panel-block">
