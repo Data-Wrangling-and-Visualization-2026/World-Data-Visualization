@@ -1,7 +1,58 @@
 # Interactive 3D World Map Visualization
 
 ## Project Overview
-We are constructing an interactive 3D chart of a world map with countries colored according to various statistical indicators from a dataset. Users can rotate the Earth sphere and click on a specific country to view detailed information and related plots.
+We constructed an interactive 3D chart of a world map with countries colored according to various statistical indicators from a dataset. Users can rotate the Earth sphere and click on a specific country to view detailed information and related plots.
+
+![3D Globe Overview](client/public/overview.png)
+
+## How to Launch the Website Locally
+#### Linux
+
+```bash
+curl -o- https://githubusercontent.com | bash
+```
+
+Restart your terminal
+
+```bash
+nvm install --lts
+```
+
+#### macOS
+
+```bash
+# Install Node.js if not installed
+brew install node
+
+# Clone the repo
+git clone <REPOSITORY-URL>
+```
+
+#### Windows
+1. **Download:** Go to the official [Node.js](https://nodejs.org/en) website and download the **LTS (Long-Term Support)** version for Windows.
+
+2. **Run Setup:** Open the downloaded `.msi` file and follow the installation wizard. Keep the default settings, specifically ensuring the **"Add to PATH"** option is checked.
+
+3. **Finish:** Click **"Install"** and then **"Finish"** once the process completes
+
+#### Other actions are equivalent for any OS
+Launch two terminals
+
+##### Terminal 1
+```bash
+cd <PATH-TO-PROJECT> 
+cd client
+npm install 
+npm start
+```
+
+##### Terminal 2
+```bash
+cd <PATH-TO-PROJECT> 
+cd server
+npm install 
+npm start
+```
 
 ## Team Roles
 - **Zamir Safin**: Frontend Visualization (React, D3.js)
@@ -93,48 +144,3 @@ We are constructing an interactive 3D chart of a world map with countries colore
    ```
 
 >[!warn] Do not forget to edit `DB_USER` and `DB_PASSWORD` with your own values
-
-## Docker
-
-Below you can see the scripts for launching the application via Docker
-
-#### Linux/macOS
-```bash
-cd $PROJECT_PATH/docker
-docker build -t dwav-api .
-
-docker run --rm -p 8000:8000 --env-file .env dwav-api
-```
-
-If `host.docker.internal` does not resolve, use:
-
-```bash
-docker run --rm -p 8000:8000 --add-host=host.docker.internal:host-gateway --env-file .env dwav-api
-```
-
-#### Windows
-```bat
-@echo off
-setlocal EnableExtensions
-
-REM Build and run the Node API from this folder (same as: docker build / docker run).
-REM Requires Docker Desktop for Windows. Ensure docker\.env exists with DB_* and PORT.
-
-cd /d "%~dp0"
-
-if not exist ".env" (
-    echo ERROR: docker\.env not found in this folder. Create it with DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT, PORT.
-    exit /b 1
-)
-
-echo Building image dwav-api...
-docker build -t dwav-api .
-if errorlevel 1 exit /b 1
-
-echo.
-echo Starting container on http://localhost:8000  (Ctrl+C to stop)
-echo.
-
-docker run --rm -p 8000:8000 --env-file .env dwav-api
-exit /b %ERRORLEVEL%
-```

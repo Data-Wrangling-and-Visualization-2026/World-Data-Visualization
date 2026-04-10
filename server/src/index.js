@@ -68,7 +68,6 @@ app.get("/metrics", (req, res) => {
 app.get("/country-series/:country", (req, res) => {
   const country = req.params.country.trim();
 
-  console.log(`Ищем страну: "${country}"`);
   // Build a safe SELECT list for metrics with spaces/symbols.
   const metricSelect = METRICS.map((m) => `"${m}"`).join(", ");
   const sql = `

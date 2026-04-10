@@ -47,6 +47,60 @@ const ROSE_METRICS = [
 
 const STREAM_METRICS = ["Birth", "Death", "Migrants (net)", "Yearly Change"];
 
+const VIOLIN_EMISSION_METRICS = [
+  "CO2 emissions per capita",
+  "Fossil CO2 emissions (tons)"
+];
+
+/** Gaussian KDE at x given samples */
+function kdeAt(samples, x, bandwidth) {
+  const n = samples.length;
+  if (!n) return 0;
+  const c = 1 / (bandwidth * Math.sqrt(2 * Math.PI));
+  let s = 0;
+  for (let i = 0; i < n; i += 1) {
+    const u = (x - samples[i]) / bandwidth;
+    s += Math.exp(-0.5 * u * u) * c;
+  }
+  return s / n;
+}
+
+/** Split-violin polygon: left = pre-2000, right = post-2000 (KDE width). */
+function splitViolinPath(pre, post, yScale, xCenter, halfWidth, bandwidth) {
+  const [r0, r1] = yScale.range();
+  const yMin = Math.min(r0, r1);
+  const yMax = Math.max(r0, r1);
+  const steps = 48;
+  const ys = d3.range(yMin, yMax + 1e-9, (yMax - yMin) / steps);
+  let maxL = 0;
+  let maxR = 0;
+  ys.forEach((yp) => {
+    const v = yScale.invert(yp);
+    maxL = Math.max(maxL, kdeAt(pre, v, bandwidth));
+    maxR = Math.max(maxR, kdeAt(post, v, bandwidth));
+  });
+  maxL = maxL || 1e-9;
+  maxR = maxR || 1e-9;
+  const left = [];
+  const right = [];
+  ys.forEach((yp) => {
+    const v = yScale.invert(yp);
+    left.push([xCenter - (kdeAt(pre, v, bandwidth) / maxL) * halfWidth, yp]);
+    right.push([xCenter + (kdeAt(post, v, bandwidth) / maxR) * halfWidth, yp]);
+  });
+  if (!left.length) return null;
+  let d = `M ${xCenter},${yMin}`;
+  left.forEach((p) => {
+    d += ` L ${p[0]},${p[1]}`;
+  });
+  d += ` L ${xCenter},${yMax}`;
+  for (let i = right.length - 1; i >= 0; i -= 1) {
+    d += ` L ${right[i][0]},${right[i][1]}`;
+  }
+  d += " Z";
+  return d;
+}
+
 function pearson(xs, ys) {
   const n = Math.min(xs.length, ys.length);
   if (n < 2) return 0;
@@ -219,6 +273,12 @@ export default function App() {
   const [rangeInfo, setRangeInfo] = useState({ min: null, max: null });
   const [apiItems, setApiItems] = useState([]);
   const [viewMode, setViewMode] = useState("split");
+  const [chordHighlightMetric, setChordHighlightMetric] = useState(null);
+  /** Year range [lo, hi] for parallel-coords temporal brush (subset of slider window). */
+  const [parallelYearBrush, setParallelYearBrush] = useState(() => [
+    MIN_YEAR,
+    Number(DEFAULT_YEAR)
+  ]);
 
   const [selectedYear, setSelectedYear] = useState(DEFAULT_YEAR);
   const [selectedMetric, setSelectedMetric] = useState(DEFAULT_METRIC);
@@ -435,7 +495,7 @@ export default function App() {
 
       const color = d3
         .scaleSequential()
-        .domain([-1, 1])
+        .domain([1, -1])
         .interpolator(d3.interpolateRdYlBu);
 
       const g = svg.append("g").attr("transform", `translate(${pad},${pad / 2})`);
@@ -675,6 +735,405 @@ export default function App() {
     [countrySeries, selectedCountry, selectedYear]
   );
 
+  useEffect(() => {
+    const y = Number(selectedYear);
+    setParallelYearBrush(([lo, hi]) => [Math.min(lo, y), Math.min(Math.max(hi, lo), y)]);
+  }, [selectedYear]);
+
+  useEffect(() => {
+    setChordHighlightMetric(null);
+    setParallelYearBrush([MIN_YEAR, Number(selectedYear)]);
+  }, [selectedCountry]);
+
+  const violinRef = useD3(
+    (root) => {
+      root.selectAll("*").remove();
+      /** Full country history only — not filtered by the year slider. */
+      const rows = (Array.isArray(countrySeries) ? countrySeries : []).filter((r) => {
+        const y = Number(r.Year);
+        if (!Number.isFinite(y) || y < MIN_YEAR || y > MAX_YEAR) return false;
+        return VIOLIN_EMISSION_METRICS.some((m) => Number.isFinite(Number(r[m])));
+      });
+      if (!selectedCountry || rows.length < 1) {
+        root
+          .append("div")
+          .attr("class", "chart-empty")
+          .text(selectedCountry ? "Not enough emissions data for violins." : "Select a country.");
+        return;
+      }
+
+      function eraSplit(sub, metric) {
+        const pre = sub
+          .filter((r) => {
+            const y = Number(r.Year);
+            return y >= MIN_YEAR && y <= 1999;
+          })
+          .map((r) => Number(r[metric]))
+          .filter(Number.isFinite);
+        const post = sub
+          .filter((r) => {
+            const y = Number(r.Year);
+            return y >= 2000 && y <= MAX_YEAR;
+          })
+          .map((r) => Number(r[metric]))
+          .filter(Number.isFinite);
+        return { pre, post };
+      }
+
+      const w = 340;
+      const rowH = 112;
+      const pad = { top: 20, right: 8, bottom: 18, left: 8 };
+      const svg = root
+        .append("svg")
+        .attr("viewBox", `0 0 ${w} ${rowH + pad.top + pad.bottom}`)
+        .attr("class", "chart-svg");
+
+      const g0 = svg.append("g").attr("transform", `translate(${pad.left},${pad.top})`);
+
+      VIOLIN_EMISSION_METRICS.forEach((metric, ci) => {
+        const { pre, post } = eraSplit(rows, metric);
+        const all = pre.concat(post);
+        if (all.length < 1) return;
+        let lo = d3.min(all);
+        let hi = d3.max(all);
+        if (!Number.isFinite(lo) || !Number.isFinite(hi)) return;
+        const span = hi - lo || Math.abs(lo) * 0.08 || 1;
+        const padY = span * 0.08;
+        lo -= padY;
+        hi += padY;
+        if (hi === lo) {
+          lo -= 1;
+          hi += 1;
+        }
+
+        const bwMetric =
+          ((d3.deviation(all) ?? 0) || span * 0.2 || Math.abs(lo) * 0.05 || 1) *
+          Math.pow(Math.max(all.length, 2), -0.15);
+
+        const yScale = d3.scaleLinear().domain([lo, hi]).range([rowH - 26, 8]);
+
+        const cellW = (w - pad.left - pad.right) / 2;
+        const cx = ci * cellW + cellW / 2;
+        const hw = cellW * 0.38;
+
+        const dPath = splitViolinPath(pre, post, yScale, cx, hw, bwMetric);
+        g0
+          .append("path")
+          .attr("fill", ci === 0 ? "rgba(56, 189, 248, 0.55)" : "rgba(52, 211, 153, 0.55)")
+          .attr("stroke", "rgba(255,255,255,0.45)")
+          .attr("d", dPath || "");
+
+        g0
+          .append("text")
+          .attr("class", "chart-axis-label")
+          .attr("text-anchor", "middle")
+          .attr("x", cx)
+          .attr("y", rowH - 2)
+          .text(metric === "CO2 emissions per capita" ? "CO₂ per capita" : "Fossil CO₂ (tons)");
+
+        g0
+          .append("text")
+          .attr("class", "chart-axis-label")
+          .attr("text-anchor", "middle")
+          .attr("x", cx - hw * 0.35)
+          .attr("y", rowH - 22)
+          .text(`< 2000`);
+
+        g0
+          .append("text")
+          .attr("class", "chart-axis-label")
+          .attr("text-anchor", "middle")
+          .attr("x", cx + hw * 0.35)
+          .attr("y", rowH - 22)
+          .text(`>= 2000`);
+      });
+    },
+    [countrySeries, selectedCountry]
+  );
+
+  const chordRef = useD3(
+    (root) => {
+      root.selectAll("*").remove();
+      const rows = seriesForWindow;
+      if (!selectedCountry || rows.length < 3) {
+        root
+          .append("div")
+          .attr("class", "chart-empty")
+          .text(selectedCountry ? "Not enough data for chord." : "Select a country.");
+        return;
+      }
+
+      const metrics = METRICS.slice();
+      const years = rows.map((r) => r.Year);
+      const aligned = metrics.map((m) => years.map((_, i) => Number(rows[i][m])));
+      const n = metrics.length;
+      const corr = Array.from({ length: n }, () => Array(n).fill(0));
+      for (let i = 0; i < n; i += 1) {
+        for (let j = 0; j < n; j += 1) {
+          const xs = [];
+          const ys = [];
+          for (let k = 0; k < years.length; k += 1) {
+            const a = aligned[i][k];
+            const b = aligned[j][k];
+            if (Number.isFinite(a) && Number.isFinite(b)) {
+              xs.push(a);
+              ys.push(b);
+            }
+          }
+          corr[i][j] = pearson(xs, ys);
+        }
+      }
+
+      const matrix = Array.from({ length: n }, () => Array(n).fill(0));
+      for (let i = 0; i < n; i += 1) {
+        for (let j = 0; j < n; j += 1) {
+          if (i === j) matrix[i][j] = 0.001;
+          else matrix[i][j] = Math.abs(corr[i][j]);
+        }
+      }
+
+      const w = 340;
+      const h = 320;
+      const outerRadius = Math.min(w, h) * 0.42;
+      const innerRadius = outerRadius - 18;
+
+      const chordLayout = d3.chord().padAngle(0.04).sortSubgroups(d3.descending);
+      const chords = chordLayout(matrix);
+
+      const arc = d3.arc().innerRadius(innerRadius).outerRadius(outerRadius);
+      const ribbon = d3.ribbon().radius(innerRadius - 2);
+
+      const svg = root
+        .append("svg")
+        .attr("viewBox", `${-w / 2} ${-h / 2} ${w} ${h}`)
+        .attr("class", "chart-svg chart-chord-svg");
+
+      const g = svg.append("g");
+
+      const group = g.append("g").selectAll("g").data(chords.groups).join("g");
+
+      group
+        .append("path")
+        .attr("fill", (_, i) => d3.interpolateSinebow(i / n))
+        .attr("stroke", "rgba(0,0,0,0.35)")
+        .attr("class", "chord-group-arc")
+        .attr("id", (_, i) => `chord-arc-${i}`)
+        .attr("d", arc)
+        .style("cursor", "pointer")
+        .style("opacity", (_, i) =>
+          chordHighlightMetric === null || chordHighlightMetric === i ? 0.92 : 0.25
+        )
+        .on("click", (event, d) => {
+          event.stopPropagation();
+          setChordHighlightMetric((prev) => (prev === d.index ? null : d.index));
+        });
+
+      group
+        .append("text")
+        .each(function (d) {
+          const a = (d.startAngle + d.endAngle) / 2 - Math.PI / 2;
+          d3.select(this)
+            .attr("transform", `translate(${Math.cos(a) * (outerRadius + 10)},${Math.sin(a) * (outerRadius + 10)})`)
+            .attr("text-anchor", "middle")
+            .attr("class", "chart-chord-label")
+            .text(metrics[d.index].length > 14 ? metrics[d.index].slice(0, 12) + "…" : metrics[d.index]);
+        });
+
+      const ribbons = g
+        .append("g")
+        .attr("fill-opacity", 0.78)
+        .selectAll("path")
+        .data(chords)
+        .join("path")
+        .attr("d", ribbon)
+        .attr("fill", (d) => {
+          const r = corr[d.source.index][d.target.index];
+          return r >= 0 ? "rgba(34, 197, 94, 0.45)" : "rgba(248, 113, 113, 0.45)";
+        })
+        .attr("stroke", (d) => {
+          const r = corr[d.source.index][d.target.index];
+          return r >= 0 ? "rgba(34, 197, 94, 0.95)" : "rgba(248, 113, 113, 0.95)";
+        })
+        .style("cursor", "pointer")
+        .style("opacity", (d) => {
+          if (chordHighlightMetric === null) return 0.55;
+          return d.source.index === chordHighlightMetric || d.target.index === chordHighlightMetric
+            ? 0.95
+            : 0.08;
+        })
+        .on("mouseenter", function (event, d) {
+          const i = d.source.index;
+          const j = d.target.index;
+          const r = corr[i][j];
+          const xs = [];
+          const ys = [];
+          for (let k = 0; k < years.length; k += 1) {
+            const a = aligned[i][k];
+            const b = aligned[j][k];
+            if (Number.isFinite(a) && Number.isFinite(b)) {
+              xs.push(a);
+              ys.push(b);
+            }
+          }
+          d3.select(this).attr("stroke-width", 2);
+          root.selectAll(".chord-tooltip").remove();
+          const tip = root.append("div").attr("class", "chord-tooltip");
+          const [mx, my] = d3.pointer(event, root.node());
+          tip.style("left", `${mx + 10}px`).style("top", `${my + 10}px`);
+          tip.html(
+            `<div class="chord-tip-title">r = ${r.toFixed(3)}</div>` +
+              `<div class="chord-tip-sub">${metrics[i]} ↔ ${metrics[j]}</div>` +
+              `<svg class="chord-scatter" viewBox="0 0 90 50" width="90" height="50"></svg>`
+          );
+          const mini = tip.select("svg");
+          if (xs.length < 2) return;
+          const xEx = d3.extent(xs);
+          const yEx = d3.extent(ys);
+          const sx = d3.scaleLinear().domain(xEx).range([4, 86]).nice();
+          const sy = d3.scaleLinear().domain(yEx).range([44, 6]).nice();
+          mini
+            .selectAll("circle")
+            .data(xs.map((x, idx) => [x, ys[idx]]))
+            .join("circle")
+            .attr("cx", (p) => sx(p[0]))
+            .attr("cy", (p) => sy(p[1]))
+            .attr("r", 2)
+            .attr("fill", r >= 0 ? "#22c55e" : "#f87171");
+        })
+        .on("mouseleave", function () {
+          d3.select(this).attr("stroke-width", null);
+          root.selectAll(".chord-tooltip").remove();
+        });
+
+      svg.on("click", () => setChordHighlightMetric(null));
+    },
+    [seriesForWindow, selectedCountry, selectedYear, chordHighlightMetric]
+  );
+
+  const parallelRef = useD3(
+    (root) => {
+      root.selectAll("*").remove();
+      const rows = seriesForWindow;
+      if (!selectedCountry || rows.length < 2) {
+        root
+          .append("div")
+          .attr("class", "chart-empty")
+          .text(selectedCountry ? "Not enough data for parallel plot." : "Select a country.");
+        return;
+      }
+
+      const metrics = METRICS.slice();
+      const extents = {};
+      metrics.forEach((m) => {
+        const vals = rows.map((r) => Number(r[m])).filter(Number.isFinite);
+        if (!vals.length) {
+          extents[m] = { min: 0, max: 1, span: 1 };
+          return;
+        }
+        const [a, b] = d3.extent(vals);
+        const span = !Number.isFinite(a) || b === a ? 1e-9 : b - a;
+        extents[m] = { min: a, max: b, span };
+      });
+
+      const [yLo, yHi] = parallelYearBrush;
+      const brushLo = Math.max(MIN_YEAR, Math.min(yLo, yHi));
+      const brushHi = Math.min(Number(selectedYear), Math.max(yLo, yHi));
+      const filtered = rows.filter((r) => r.Year >= brushLo && r.Year <= brushHi);
+
+      const w = 360;
+      const h = 260;
+      const margin = { top: 28, right: 10, bottom: 36, left: 10 };
+      const innerW = w - margin.left - margin.right;
+      const innerH = h - margin.top - margin.bottom;
+
+      const denom = Math.max(1, metrics.length - 1);
+      const xPos = metrics.map((_, i) => (i / denom) * innerW);
+      const yNorm = d3.scaleLinear().domain([0, 1]).range([innerH, 0]);
+
+      const yearExtent = d3.extent(rows, (r) => r.Year);
+      const yearColor = d3
+        .scaleSequential(d3.interpolateTurbo)
+        .domain(yearExtent[0] === yearExtent[1] ? [yearExtent[0] - 1, yearExtent[1] + 1] : yearExtent);
+
+      const svg = root.append("svg").attr("viewBox", `0 0 ${w} ${h}`).attr("class", "chart-svg");
+
+      const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+      const lineGen = d3
+        .line()
+        .defined((d) => d.every((v) => Number.isFinite(v)))
+        .curve(d3.curveMonotoneX);
+
+      const selYear = Number(selectedYear);
+
+      filtered.forEach((row) => {
+        const pts = metrics.map((m, i) => {
+          const v = Number(row[m]);
+          const { min, span } = extents[m];
+          const t = Number.isFinite(v) ? (v - min) / span : NaN;
+          return [xPos[i], yNorm(t)];
+        });
+        const isSel = row.Year === selYear;
+        g.append("path")
+          .datum(pts)
+          .attr("fill", "none")
+          .attr("stroke", yearColor(row.Year))
+          .attr("stroke-width", isSel ? 3 : 1.1)
+          .attr("stroke-opacity", isSel ? 1 : 0.72)
+          .attr("stroke-linecap", "round")
+          .attr("stroke-linejoin", "round")
+          .attr("d", lineGen);
+      });
+
+      metrics.forEach((m, i) => {
+        g.append("line")
+          .attr("x1", xPos[i])
+          .attr("x2", xPos[i])
+          .attr("y1", 0)
+          .attr("y2", innerH)
+          .attr("stroke", "rgba(255,255,255,0.12)");
+        g.append("text")
+          .attr("class", "chart-pc-axis")
+          .attr("x", xPos[i])
+          .attr("y", innerH + 12)
+          .attr("text-anchor", "middle")
+          .text(String(i + 1));
+      });
+
+      const yearScale = d3
+        .scaleLinear()
+        .domain([MIN_YEAR, Number(selectedYear)])
+        .range([0, innerW]);
+
+      const brushG = svg.append("g").attr("transform", `translate(${margin.left},${h - 22})`);
+
+      const b = d3
+        .brushX()
+        .extent([
+          [0, 0],
+          [innerW, 14]
+        ])
+        .on("end", (event) => {
+          if (!event.selection) return;
+          if (!event.sourceEvent) return;
+          const [x0, x1] = event.selection.map(yearScale.invert);
+          const lo = Math.round(Math.min(x0, x1));
+          const hi = Math.round(Math.max(x0, x1));
+          setParallelYearBrush([
+            Math.max(MIN_YEAR, lo),
+            Math.min(Number(selectedYear), hi)
+          ]);
+        });
+
+      brushG.call(b);
+      brushG.call(b.move, [yearScale(brushLo), yearScale(brushHi)]);
+
+      brushG.selectAll(".selection").attr("fill", "rgba(59, 130, 246, 0.25)");
+      brushG.append("text").attr("x", 0).attr("y", -6).attr("class", "chart-axis-label").text("Brush years");
+    },
+    [seriesForWindow, selectedCountry, selectedYear, parallelYearBrush]
+  );
+
   return (
     <div className="app">
       <header className="topbar">
@@ -785,7 +1244,7 @@ export default function App() {
             <div className="panel-block">
               <h3>Current State</h3>
               <p><strong>Hover:</strong> {hoveredCountry || "—"}</p>
-              <p><strong>Selected:</strong> {selectedCountry || "—"}</p>
+              <p><strong>Selected:</strong> {selectedCountry?.replace(/\b\w/g, char => char.toUpperCase()) || "—"}</p>
               <p><strong>Matched countries:</strong> {matchedCount}</p>
               <p><strong>API rows:</strong> {apiItems.length}</p>
             </div>
@@ -844,19 +1303,19 @@ export default function App() {
                   <div ref={streamRef} className="chart-host" />
                 </div>
 
-                <div className="chart-card chart-placeholder">
-                  <div className="chart-title">4) Placeholder</div>
-                  <div className="chart-empty">Coming soon</div>
+                <div className="chart-card">
+                  <div className="chart-title">4) Split violin: CO₂ emissions (pre/post-2000)</div>
+                  <div ref={violinRef} className="chart-host chart-host--overlay" />
                 </div>
 
-                <div className="chart-card chart-placeholder">
-                  <div className="chart-title">5) Placeholder</div>
-                  <div className="chart-empty">Coming soon</div>
+                <div className="chart-card">
+                  <div className="chart-title">5) Chord: metric interdependencies (|r|)</div>
+                  <div ref={chordRef} className="chart-host chart-host--overlay" />
                 </div>
 
-                <div className="chart-card chart-placeholder">
-                  <div className="chart-title">6) Placeholder</div>
-                  <div className="chart-empty">Coming soon</div>
+                <div className="chart-card">
+                  <div className="chart-title">6) Parallel coords (normalized) + year brush</div>
+                  <div ref={parallelRef} className="chart-host" />
                 </div>
                 </div>
               </div>
