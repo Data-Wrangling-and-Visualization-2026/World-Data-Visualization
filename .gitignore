@@ -6,6 +6,8 @@
 # --------------------------
 # ENVIRONMENT & SECRETS
 # --------------------------
+.cursor/
+.cursor
 .env
 .env.local
 .env.development.local

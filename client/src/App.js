@@ -416,11 +416,11 @@ export default function App() {
     const value = choroplethMap[name];
 
     if (!Number.isFinite(value)) {
-      return "rgba(210,210,210,0.95)";
+      return "rgba(26,152,80,0.95)";
     }
 
     const idx = getBucketIndex(value, rangeInfo.min, rangeInfo.max);
-    if (idx < 0) return "rgba(210,210,210,0.95)";
+    if (idx < 0) return "rgba(26,152,80,0.95)";
     return COLOR_SCALE[idx];
   };
 
